@@ -12,7 +12,6 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
-// routes
 app.use("/auth", authRoutes);
 app.use("/books", bookRoutes);
 
