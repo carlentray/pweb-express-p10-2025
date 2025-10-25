@@ -19,4 +19,3 @@ router.patch("/:id", authenticate, updateBook);
 router.delete("/:id", authenticate, deleteBook);
 
 export default router;
-

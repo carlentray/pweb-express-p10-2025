@@ -10,6 +10,10 @@ export const createBook = async (req: Request, res: Response) => {
     if (!title || !writer || !publisher || !publication_year || !price || !stock_quantity || !genre_id)
       return res.status(400).json({ message: "Semua field wajib diisi" });
 
+    if (price < 0 || stock_quantity < 0) {
+      return res.status(400).json({ message: "Harga dan stok harus bernilai positif" });
+    }
+
     const existingBook = await prisma.books.findUnique({ where: { title } });
     if (existingBook) return res.status(400).json({ message: "Judul buku sudah ada" });
 
@@ -88,6 +92,15 @@ export const updateBook = async (req: Request, res: Response) => {
 
     const book = await prisma.books.findUnique({ where: { id } });
     if (!book || book.deleted_at) return res.status(404).json({ message: "Buku tidak ditemukan" });
+
+    if (
+      (data.price !== undefined && data.price < 0) ||
+      (data.stock_quantity !== undefined && data.stock_quantity < 0)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Harga dan stok harus bernilai positif" });
+    }
 
     const updatedBook = await prisma.books.update({
       where: { id },
