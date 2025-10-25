@@ -12,8 +12,8 @@ import { authenticate } from "../middleware/authMiddleware";
 const router = express.Router();
 
 router.get("/", getAllBooks);
-router.get("/:id", getBookById);
 router.get("/genre/:genre_id", getBooksByGenre);
+router.get("/:id", getBookById);
 router.post("/", authenticate, createBook);
 router.patch("/:id", authenticate, updateBook);
 router.delete("/:id", authenticate, deleteBook);
