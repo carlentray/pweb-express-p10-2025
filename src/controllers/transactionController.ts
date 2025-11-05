@@ -8,8 +8,28 @@ export const createTransaction = async (req: Request, res: Response) => {
     const user = (req as any).user;
     const { items } = req.body;
 
-    if (!items || !Array.isArray(items) || items.length === 0)
+    if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Item pesanan wajib diisi" });
+    }
+
+    const ids = items.map((i) => i.book_id);
+    if (new Set(ids).size !== ids.length) {
+      return res
+        .status(400)
+        .json({ message: "Tidak boleh ada buku yang sama dalam satu transaksi" });
+    }
+
+    for (const item of items) {
+      if (!item.book_id || typeof item.quantity !== "number") {
+        return res.status(400).json({ message: "Format item tidak valid" });
+      }
+
+      if (item.quantity <= 0) {
+        return res
+          .status(400)
+          .json({ message: "Jumlah pembelian harus lebih dari 0" });
+      }
+    }
 
     const createdOrder = await prisma.orders.create({
       data: {
@@ -17,13 +37,21 @@ export const createTransaction = async (req: Request, res: Response) => {
         order_items: {
           create: await Promise.all(
             items.map(async (item) => {
-              const book = await prisma.books.findUnique({ where: { id: item.book_id } });
-              if (!book || book.deleted_at) throw new Error(`Buku ${item.book_id} tidak ditemukan`);
-              if (book.stock_quantity < item.quantity) throw new Error(`Stok buku ${book.title} tidak cukup`);
+              const book = await prisma.books.findUnique({
+                where: { id: item.book_id },
+              });
+
+              if (!book || book.deleted_at)
+                throw new Error(`Buku ${item.book_id} tidak ditemukan`);
+
+              if (book.stock_quantity < item.quantity)
+                throw new Error(`Stok buku ${book.title} tidak cukup`);
 
               await prisma.books.update({
                 where: { id: item.book_id },
-                data: { stock_quantity: book.stock_quantity - item.quantity },
+                data: {
+                  stock_quantity: book.stock_quantity - item.quantity,
+                },
               });
 
               return { book_id: item.book_id, quantity: item.quantity };
@@ -34,9 +62,13 @@ export const createTransaction = async (req: Request, res: Response) => {
       include: { order_items: { include: { book: true } } },
     });
 
-    res.status(201).json({ message: "Transaksi berhasil dibuat", order: createdOrder });
+    res
+      .status(201)
+      .json({ message: "Transaksi berhasil dibuat", order: createdOrder });
   } catch (error: any) {
-    res.status(400).json({ message: error.message || "Gagal membuat transaksi" });
+    res
+      .status(400)
+      .json({ message: error.message || "Gagal membuat transaksi" });
   }
 };
 
