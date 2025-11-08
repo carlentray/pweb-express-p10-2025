@@ -11,7 +11,7 @@ const router = express.Router();
 
 router.post("/", authenticate, createTransaction);
 router.get("/", authenticate, getAllTransactions);
-router.get("/:id", authenticate, getTransactionById);
 router.get("/statistics/top", authenticate, getTransactionStats);
+router.get("/:id", authenticate, getTransactionById);
 
 export default router;

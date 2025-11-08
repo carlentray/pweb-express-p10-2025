@@ -2,22 +2,25 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { PrismaClient } from "@prisma/client";
+
 import authRoutes from "./routes/authRoutes";
 import bookRoutes from "./routes/bookRoutes";
 import genreRoutes from "./routes/genreRoutes";
-import transactionRoutes from "./routes/transactionRoutes"; 
+import transactionRoutes from "./routes/transactionRoutes";
 
 dotenv.config();
 const app = express();
 const prisma = new PrismaClient();
 
-app.use(cors());
+app.use(cors({
+  origin: "http://localhost:5173",
+  credentials: true,
+}));
 app.use(express.json());
-
-app.use("/auth", authRoutes);
-app.use("/books", bookRoutes);
-app.use("/genre", genreRoutes);
-app.use("/transactions", transactionRoutes); 
+app.use("/api/auth", authRoutes);
+app.use("/api/books", bookRoutes);
+app.use("/api/genres", genreRoutes);
+app.use("/api/transactions", transactionRoutes);
 
 app.get("/", (req, res) => {
   res.send("🚀 IT Literature Shop API is running");

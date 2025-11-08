@@ -5,52 +5,96 @@ const prisma = new PrismaClient();
 
 export const createBook = async (req: Request, res: Response) => {
   try {
-    const { title, writer, publisher, publication_year, description, price, stock_quantity, genre_id } = req.body;
+    const {
+      title,
+      writer,
+      publisher,
+      publication_year,
+      description,
+      price,
+      stock_quantity,
+      genre_id,
+    } = req.body;
 
-    if (!title || !writer || !publisher || !publication_year || !price || !stock_quantity || !genre_id)
+    if (
+      !title ||
+      !writer ||
+      !publisher ||
+      !publication_year ||
+      !price ||
+      !stock_quantity ||
+      !genre_id
+    ) {
       return res.status(400).json({ message: "Semua field wajib diisi" });
-
-    if (price < 0 || stock_quantity < 0) {
-      return res.status(400).json({ message: "Harga dan stok harus bernilai positif" });
     }
 
-    const existingBook = await prisma.books.findUnique({ where: { title } });
-    if (existingBook) return res.status(400).json({ message: "Judul buku sudah ada" });
+    if (price < 0 || stock_quantity < 0) {
+      return res
+        .status(400)
+        .json({ message: "Harga dan stok harus bernilai positif" });
+    }
+
+    const existingBook = await prisma.books.findFirst({ where: { title } });
+    if (existingBook) {
+      return res.status(400).json({ message: "Judul buku sudah ada" });
+    }
 
     const genre = await prisma.genres.findUnique({ where: { id: genre_id } });
-    if (!genre) return res.status(404).json({ message: "Genre tidak ditemukan" });
+    if (!genre) {
+      return res.status(404).json({ message: "Genre tidak ditemukan" });
+    }
 
     const newBook = await prisma.books.create({
-      data: { title, writer, publisher, publication_year, description, price, stock_quantity, genre_id },
+      data: {
+        title,
+        writer,
+        publisher,
+        publication_year: Number(publication_year),
+        description,
+        price: Number(price),
+        stock_quantity: Number(stock_quantity),
+        genre_id,
+      },
     });
 
-    res.status(201).json({ message: "Buku berhasil ditambahkan", book: newBook });
-  } catch {
-    res.status(500).json({ message: "Gagal menambahkan buku" });
+    return res
+      .status(201)
+      .json({ message: "Buku berhasil ditambahkan", book: newBook });
+  } catch (error) {
+    console.error("❌ Gagal menambahkan buku:", error);
+    return res
+      .status(500)
+      .json({ message: "Gagal menambahkan buku (terjadi kesalahan server)" });
   }
 };
 
 export const getAllBooks = async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10, title, genre_id } = req.query;
+    const { page = 1, limit = 10, title, genre_id, orderBy, order } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const filters: any = { deleted_at: null };
     if (title) filters.title = { contains: String(title), mode: "insensitive" };
     if (genre_id) filters.genre_id = String(genre_id);
 
+    const sortField = orderBy ? String(orderBy) : "title";
+    const sortOrder = order === "desc" ? "desc" : "asc";
+
     const books = await prisma.books.findMany({
       where: filters,
       skip,
       take: Number(limit),
+      orderBy: { [sortField]: sortOrder },
       include: { genre: true },
     });
 
     res.status(200).json(books);
-  } catch {
+  } catch (error) {
+    console.error("❌ Error getAllBooks:", error);
     res.status(500).json({ message: "Gagal mengambil data buku" });
   }
 };
+
 
 export const getBookById = async (req: Request, res: Response) => {
   try {

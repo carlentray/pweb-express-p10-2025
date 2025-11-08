@@ -23,69 +23,85 @@ export const createTransaction = async (req: Request, res: Response) => {
       if (!item.book_id || typeof item.quantity !== "number") {
         return res.status(400).json({ message: "Format item tidak valid" });
       }
-
       if (item.quantity <= 0) {
-        return res
-          .status(400)
-          .json({ message: "Jumlah pembelian harus lebih dari 0" });
+        return res.status(400).json({ message: "Jumlah pembelian harus lebih dari 0" });
       }
     }
 
-    const createdOrder = await prisma.orders.create({
-      data: {
-        user_id: user.id,
-        order_items: {
-          create: await Promise.all(
-            items.map(async (item) => {
-              const book = await prisma.books.findUnique({
-                where: { id: item.book_id },
-              });
+    const createdOrder = await prisma.$transaction(async (tx) => {
+      const order = await tx.orders.create({
+        data: {
+          user_id: user.id,
+          order_items: {
+            create: await Promise.all(
+              items.map(async (item) => {
+                const book = await tx.books.findUnique({
+                  where: { id: item.book_id },
+                });
 
-              if (!book || book.deleted_at)
-                throw new Error(`Buku ${item.book_id} tidak ditemukan`);
+                if (!book || book.deleted_at) {
+                  throw new Error(`Buku dengan ID ${item.book_id} tidak ditemukan`);
+                }
 
-              if (book.stock_quantity < item.quantity)
-                throw new Error(`Stok buku ${book.title} tidak cukup`);
+                if (book.stock_quantity === 0) {
+                  throw new Error(`Stok buku "${book.title}" sudah habis`);
+                }
 
-              await prisma.books.update({
-                where: { id: item.book_id },
-                data: {
-                  stock_quantity: book.stock_quantity - item.quantity,
-                },
-              });
+                if (book.stock_quantity < item.quantity) {
+                  throw new Error(
+                    `Stok buku "${book.title}" tidak cukup (tersisa ${book.stock_quantity})`
+                  );
+                }
 
-              return { book_id: item.book_id, quantity: item.quantity };
-            })
-          ),
+                const updatedStock = book.stock_quantity - item.quantity;
+                if (updatedStock < 0) {
+                  throw new Error(`Stok buku "${book.title}" tidak boleh negatif`);
+                }
+
+                await tx.books.update({
+                  where: { id: item.book_id },
+                  data: { stock_quantity: updatedStock },
+                });
+
+                return { book_id: item.book_id, quantity: item.quantity };
+              })
+            ),
+          },
         },
-      },
-      include: { order_items: { include: { book: true } } },
+        include: { order_items: { include: { book: true } } },
+      });
+
+      return order;
     });
 
     res
       .status(201)
       .json({ message: "Transaksi berhasil dibuat", order: createdOrder });
   } catch (error: any) {
-    res
-      .status(400)
-      .json({ message: error.message || "Gagal membuat transaksi" });
+    console.error("❌ Error createTransaction:", error);
+    res.status(400).json({
+      message: error.message || "Gagal membuat transaksi",
+    });
   }
 };
 
 export const getAllTransactions = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const { page = 1, limit = 5, orderBy = "created_at", order = "desc" } = req.query;
+
+    const skip = (Number(page) - 1) * Number(limit);
 
     const orders = await prisma.orders.findMany({
       where: { user_id: user.id },
-      include: {
-        order_items: { include: { book: true } },
-      },
-      orderBy: { created_at: "desc" },
+      skip,
+      take: Number(limit),
+      orderBy: { [String(orderBy)]: order === "asc" ? "asc" : "desc" },
+      include: { order_items: { include: { book: true } } },
     });
 
     res.status(200).json(orders);
-  } catch {
+  } catch (error) {
     res.status(500).json({ message: "Gagal mengambil data transaksi" });
   }
 };
@@ -100,22 +116,31 @@ export const getTransactionById = async (req: Request, res: Response) => {
       include: { order_items: { include: { book: true } } },
     });
 
-    if (!order || order.user_id !== user.id)
+    if (!order || order.user_id !== user.id) {
       return res.status(404).json({ message: "Transaksi tidak ditemukan" });
+    }
 
-    res.status(200).json(order);
-  } catch {
+    const total = order.order_items.reduce(
+      (sum, item) => sum + item.book.price * item.quantity,
+      0
+    );
+
+    res.status(200).json({ ...order, total_harga: total });
+  } catch (error) {
+    console.error("❌ Error getTransactionById:", error);
     res.status(500).json({ message: "Gagal mengambil detail transaksi" });
   }
 };
 
 export const getTransactionStats = async (req: Request, res: Response) => {
   try {
+    const { limit = 5 } = req.query;
+
     const stats = await prisma.order_items.groupBy({
       by: ["book_id"],
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: "desc" } },
-      take: 5,
+      take: Number(limit),
     });
 
     const books = await prisma.books.findMany({
@@ -129,7 +154,8 @@ export const getTransactionStats = async (req: Request, res: Response) => {
     }));
 
     res.status(200).json({ message: "Statistik transaksi", result });
-  } catch {
+  } catch (error) {
+    console.error("❌ Error getTransactionStats:", error);
     res.status(500).json({ message: "Gagal mengambil statistik transaksi" });
   }
 };
